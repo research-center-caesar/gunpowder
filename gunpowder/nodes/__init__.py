@@ -28,6 +28,7 @@ from .random_location import RandomLocation
 from .random_provider import RandomProvider
 from .rasterize_graph import RasterizationSettings, RasterizeGraph
 from .reject import Reject
+from .reduce_dims import ReduceDim
 from .renumber_connected_components import RenumberConnectedComponents
 from .scan import Scan
 from .shift_augment import ShiftAugment
