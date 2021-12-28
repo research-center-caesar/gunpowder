@@ -1,7 +1,12 @@
 import copy
 import logging
+import math
+from gunpowder.array_spec import ArraySpec
+from gunpowder.batch_request import BatchRequest
+from gunpowder.coordinate import Coordinate
 
 import numpy as np
+from skimage.measure import block_reduce
 
 from .batch_provider import BatchProvider
 
@@ -38,6 +43,26 @@ class RandomOrder(BatchProvider):
                     if key not in provider.spec:
                         del common_spec[key]
 
+        # find for each key the least common multiply of all provided voxel sizes
+        for key, spec in common_spec.items():
+            lcm_voxel_size = None
+            for provider in self.get_upstream_providers():
+                voxel_size = provider.spec[key].voxel_size
+                if voxel_size is None:
+                    continue
+                if lcm_voxel_size is None:
+                    lcm_voxel_size = voxel_size
+                else:
+                    lcm_voxel_size = Coordinate(
+                        (a * b // math.gcd(a, b)
+                        for a, b in zip(lcm_voxel_size, voxel_size)))
+            if not common_spec[key].voxel_size == lcm_voxel_size:
+                logger.warning(f'Change provided {key} voxel size from ' +
+                     f'{common_spec[key].voxel_size} to '+
+                     f'{lcm_voxel_size}')
+
+                common_spec[key].voxel_size = lcm_voxel_size
+
         for key, spec in common_spec.items():
             self.provides(key, spec)
 
@@ -60,4 +85,31 @@ class RandomOrder(BatchProvider):
         logger.debug(f'Select item {choice}')
         self.not_returend[choice] = False
 
-        return self.get_upstream_providers()[choice].request_batch(request)
+        ## Change request voxel size from least common multiple voxel size
+        # to available voxel size and post process the requested batch 
+        upstream_spec = self.get_upstream_providers()[choice].spec
+
+        new_request = BatchRequest()
+        factors = {}
+
+        for key in request.array_specs.keys():
+            factors[key] = self.spec[key].voxel_size / upstream_spec[key].voxel_size
+            new_request.array_specs[key] = ArraySpec(
+                roi = request.array_specs[key].roi,
+                voxel_size = upstream_spec[key].voxel_size,
+            )
+
+        batch = self.get_upstream_providers()[choice].request_batch(new_request)
+
+        for key in batch.arrays.keys():
+            factors_ = factors[key]
+            data = batch.arrays[key].data
+            if data.ndim > factors_.dims():
+                factors_ = (1,) * (data.ndim - factors_.dims()) + \
+                    factors_
+            data = block_reduce(data, factors_, np.mean)
+
+            batch.arrays[key].data = data
+            batch.arrays[key].spec.voxel_size = self.spec[key].voxel_size
+
+        return batch
