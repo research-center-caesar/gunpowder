@@ -107,7 +107,7 @@ class RandomOrder(BatchProvider):
             if data.ndim > factors_.dims():
                 factors_ = (1,) * (data.ndim - factors_.dims()) + \
                     factors_
-            data = block_reduce(data, factors_, np.mean)
+            data = block_reduce(data, factors_, np.mean, {'dtype': data.dtype})
 
             batch.arrays[key].data = data
             batch.arrays[key].spec.voxel_size = self.spec[key].voxel_size
