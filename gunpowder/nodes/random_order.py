@@ -57,7 +57,7 @@ class RandomOrder(BatchProvider):
                         (a * b // math.gcd(a, b)
                         for a, b in zip(lcm_voxel_size, voxel_size)))
             if not common_spec[key].voxel_size == lcm_voxel_size:
-                logger.warning(f'Change provided {key} voxel size from ' +
+                logger.debug(f'Change provided {key} voxel size from ' +
                      f'{common_spec[key].voxel_size} to '+
                      f'{lcm_voxel_size}')
 
