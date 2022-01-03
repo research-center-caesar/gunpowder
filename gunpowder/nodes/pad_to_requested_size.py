@@ -7,6 +7,7 @@ from ..batch import Batch
 from .batch_filter import BatchFilter
 from ..array import ArrayKey
 from ..batch_request import BatchRequest
+from ..roi import Roi
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +29,37 @@ class PadToRequestedSize(BatchFilter):
     def setup(self) -> None:
         self.enable_autoskip()
 
+
         for key in self.array_keys:
             spec = self.spec[key].copy()
             spec.roi.set_shape(None)
             self.updates(key, spec)
 
+        
     def prepare(self, request: BatchRequest) -> BatchRequest:
         deps = BatchRequest()
 
-        upstream_spec = self.get_upstream_provider().spec
+        spec = {k: None for k in self.array_keys}
+
+        logger.debug(f'request: {request}')
 
         for key in self.array_keys:
-            request[key].roi = upstream_spec[key].roi
+
+            upstream_provider = self.get_upstream_provider()
+            spec[key] = upstream_provider.spec[key]
+
+            while spec[key].roi.unbounded():
+                upstream_provider = upstream_provider.get_upstream_provider()
+                spec[key] = upstream_provider.spec[key]
+
+
+            request[key].roi = Roi(
+                request[key].roi.get_offset(),
+                tuple(min([r, s]) for r, s in zip(request[key].roi.get_shape(), spec[key].roi.get_shape()))
+            )
             deps[key] = request[key].copy()
+
+        logger.debug(f'change request to: {request}')
 
 
         return deps
@@ -49,15 +68,24 @@ class PadToRequestedSize(BatchFilter):
 
         for key in self.array_keys:
             data = batch.arrays[key].data
-            requested_shape = request[key].roi.get_shape()
+            requested_shape = request[key].roi.get_shape() / batch[key].spec.voxel_size
             logger.debug(f'Requested shape: {requested_shape}')
             logger.debug(f'Got shape: {data.shape}')
+
+            assert len(data.shape) >= len(requested_shape)
+
+            channel_dims = len(data.shape) - len(requested_shape)
+
             diff_shape = tuple(req_s - data_s
-                for req_s, data_s in zip(requested_shape, data.shape))
+                for req_s, data_s in zip(requested_shape, data.shape[channel_dims:]))
+
+            logger.debug(f'channel dimensions = {channel_dims}')
+
             logger.debug(f'Difference: {diff_shape}')
             pad_before = tuple(np.ceil(d/2).astype(int) for d in diff_shape)
             pad_after = tuple(np.floor(d/2).astype(int) for d in diff_shape)
             pad = tuple((d_b, d_a) for d_b, d_a in zip(pad_before, pad_after))
+            pad = (((0,0),) * channel_dims) + pad
             logger.debug(f'Pad with: {pad}')
             data = np.pad(data, pad)
 
