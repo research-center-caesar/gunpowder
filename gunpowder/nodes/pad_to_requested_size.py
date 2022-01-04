@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 import logging
 
 import numpy as np
@@ -23,8 +23,9 @@ class PadToRequestedSize(BatchFilter):
             The array keys to pad.
     '''
 
-    def __init__(self, array_keys: List[ArrayKey]) -> None:
+    def __init__(self, array_keys: List[ArrayKey], shape: Tuple[int]) -> None:
         self.array_keys = array_keys
+        self.shape = shape
 
     def setup(self) -> None:
         self.enable_autoskip()
@@ -32,7 +33,7 @@ class PadToRequestedSize(BatchFilter):
 
         for key in self.array_keys:
             spec = self.spec[key].copy()
-            spec.roi.set_shape(None)
+            spec.roi.set_shape(self.shape)
             self.updates(key, spec)
 
         
@@ -44,7 +45,6 @@ class PadToRequestedSize(BatchFilter):
         logger.debug(f'request: {request}')
 
         for key in self.array_keys:
-
             upstream_provider = self.get_upstream_provider()
             spec[key] = upstream_provider.spec[key]
 
@@ -68,16 +68,15 @@ class PadToRequestedSize(BatchFilter):
 
         for key in self.array_keys:
             data = batch.arrays[key].data
-            requested_shape = request[key].roi.get_shape() / batch[key].spec.voxel_size
-            logger.debug(f'Requested shape: {requested_shape}')
+            logger.debug(f'Requested shape: {self.shape}')
             logger.debug(f'Got shape: {data.shape}')
 
-            assert len(data.shape) >= len(requested_shape)
+            assert len(data.shape) >= len(self.shape)
 
-            channel_dims = len(data.shape) - len(requested_shape)
+            channel_dims = len(data.shape) - len(self.shape)
 
             diff_shape = tuple(req_s - data_s
-                for req_s, data_s in zip(requested_shape, data.shape[channel_dims:]))
+                for req_s, data_s in zip(self.shape, data.shape[channel_dims:]))
 
             logger.debug(f'channel dimensions = {channel_dims}')
 
