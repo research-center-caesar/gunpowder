@@ -22,9 +22,11 @@ from .merge_provider import MergeProvider
 from .noise_augment import NoiseAugment
 from .normalize import Normalize
 from .pad import Pad
+from .pad_to_requested_size import PadToRequestedSize
 from .precache import PreCache
 from .print_profiling_stats import PrintProfilingStats
 from .random_location import RandomLocation
+from .random_order import RandomOrder
 from .random_provider import RandomProvider
 from .rasterize_graph import RasterizationSettings, RasterizeGraph
 from .reject import Reject
